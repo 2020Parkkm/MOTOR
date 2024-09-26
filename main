@@ -1,0 +1,91 @@
+unsigned char CS = 0;  //current
+unsigned char PS = 0;  //prior
+unsigned char LS = 0;  //led state
+#define FAN_OFF 0
+#define FAN_LOW 1
+#define FAN_MED 2
+#define FAN_HIGH 3
+#define LED_OFF 0x01   //0000 0001 = 8
+#define LED_LOW 0x02   //0000 0010 = 9
+#define LED_MED 0x04   //0000 0100 = 10
+#define LED_HIGH 0x08  //0000 1000 = 11
+#define PBUTTON 0x10   //0001 0000 = 12
+#define LED_ALL (LED_OFF | LED_LOW | LED_MED | LED_HIGH)
+#define MOTOR 0x40  // D0100 0000 = 6
+
+void setup() {
+  DDRD |= MOTOR;  //pwm PIN 6
+  DDRB |= LED_ALL;
+  DDRB &= ~PBUTTON;
+  PORTB |= LED_OFF;
+
+  TCCR0A = (1 << WGM01) | (1 << WGM00);  //fast PWM in 6pin
+  TCCR0A |= (1 << COM0A1);               // PD6 핀 (MOTOR 핀)을 PWM 출력으로 설정
+  TCCR0B = (1 << CS02);                  //8분주
+}
+
+void mydelay(int x) {
+  while (x) {
+    TCNT2 = 10;
+    TIFR2 = 1 << TOV2;
+    while (!(TIFR2 & (1 << TOV2)))
+      ;
+    x--;
+  }
+}
+
+void blink(int ledpin) {
+  for (int i = 0; i < 15; i++) {
+    PORTB |= ledpin;
+    mydelay(150);
+    PORTB &= ~ledpin;
+    mydelay(150);
+  }
+}
+
+void MS(int i, int j) {  //MotorSpeed function
+  if (i < j) {
+    for (int k = i; k <= j; k += 10) {
+      OCR0A = k;
+      mydelay(100);
+    }
+  } else {
+    for (int l = 255; l >= 0; l -= 10) {
+      OCR0A = l;
+      mydelay(100);
+    }
+    PORTD &= ~MOTOR;
+  }
+}
+
+void loop() {
+  CS = PINB & PBUTTON;
+  if (CS == 0 && PS != 0) {
+    if ((PINB & PBUTTON) == 0) {
+      switch (LS) {
+        case FAN_OFF:
+          MS(0, 128);
+          PORTB &= ~LED_OFF;  //off LED 끄기
+          blink(LED_LOW);     //LOW LED blink
+          LS = FAN_LOW;
+          break;
+        case FAN_LOW:
+          MS(128, 200);
+          blink(LED_MED);
+          LS = FAN_MED;
+          break;
+        case FAN_MED:
+          MS(200, 255);
+          blink(LED_HIGH);
+          LS = FAN_HIGH;
+          break;
+        case FAN_HIGH:
+          MS(255, 0);
+          PORTB |= LED_OFF;
+          LS = FAN_OFF;
+          break;
+      }
+    }
+  }
+  PS = CS;
+}
